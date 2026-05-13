@@ -1,7 +1,8 @@
 import os
-import json
 import logging
+import threading
 from datetime import datetime
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -9,9 +10,25 @@ from telegram.ext import (
     ContextTypes,
 )
 
+# --- MINI WEB SERVER per Render ---
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"KICKORA BOT is running!")
+    def log_message(self, format, *args):
+        pass
+
+def run_health_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    server.serve_forever()
+
+threading.Thread(target=run_health_server, daemon=True).start()
+
 # --- CONFIG ---
 TOKEN = os.environ.get("TELEGRAM_TOKEN", "IL_TUO_TOKEN_QUI")
-AUTHORIZED_CHAT_ID = 623848005  # Il tuo Chat ID
+AUTHORIZED_CHAT_ID = 623848005
 
 # --- LOGGING ---
 logging.basicConfig(
@@ -21,7 +38,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- DATABASE IN MEMORIA ---
-# { "data": [ {id, casa, trasferta, strategia, quota, aggiunta_alle}, ... ] }
 partite_db = []
 counter = {"id": 0}
 
@@ -48,6 +64,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🗑️ `/cancella N` — Rimuovi partita per numero\n"
         "🔄 `/reset` — Svuota tutta la lista\n"
         "🎯 `/doppia` — Suggerisce la doppia migliore\n"
+        "✅ `/vinta N` — Segna partita come vinta\n"
+        "❌ `/persa N` — Segna partita come persa\n"
         "📊 `/riepilogo` — Statistiche del giorno\n\n"
         "Esempio:\n"
         "`/aggiungi Brage vs Östersund - GG - quota 1.74`"
@@ -60,7 +78,6 @@ async def aggiungi(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        # Parsing input: "Casa vs Trasferta - Strategia - quota X.XX"
         testo = " ".join(context.args)
 
         if "-" not in testo or "vs" not in testo.lower():
@@ -70,26 +87,17 @@ async def aggiungi(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(parti) < 3:
             raise ValueError("Mancano dei campi")
 
-        # Estrai squadre
         squadre = parti[0].strip()
-        squadre_split = [s.strip() for s in squadre.lower().split("vs")]
-        if len(squadre_split) != 2:
-            raise ValueError("Formato squadre non valido")
+        if "vs" in squadre:
+            casa = squadre.split("vs")[0].strip()
+            trasferta = squadre.split("vs")[1].strip()
+        else:
+            casa = squadre.split("VS")[0].strip()
+            trasferta = squadre.split("VS")[1].strip()
 
-        casa = squadre.split("vs")[0].strip() if "vs" in squadre else squadre.split("VS")[0].strip()
-        trasferta = squadre.split("vs")[1].strip() if "vs" in squadre else squadre.split("VS")[1].strip()
-
-        # Strategia
         strategia = parti[1].strip().upper()
-
-        # Quota
         quota_str = parti[2].strip().lower().replace("quota", "").strip()
         quota = float(quota_str)
-
-        # Valida strategia
-        strategie_valide = ["GG", "OVER 2.5", "OVER2.5", "OVER 1.5", "OVER1.5", "1", "X", "2"]
-        if strategia not in strategie_valide:
-            strategia = parti[1].strip()  # accetta qualsiasi strategia
 
         partita = {
             "id": get_next_id(),
@@ -98,7 +106,7 @@ async def aggiungi(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "strategia": strategia,
             "quota": quota,
             "aggiunta_alle": datetime.now().strftime("%H:%M"),
-            "esito": None  # None = in attesa, True = vinta, False = persa
+            "esito": None
         }
         partite_db.append(partita)
 
@@ -138,19 +146,18 @@ async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = f"📋 *PARTITE DI OGGI* — {datetime.now().strftime('%d/%m/%Y')}\n"
     msg += "─" * 30 + "\n\n"
 
-    quota_totale = 1.0
     for p in partite_db:
         esito_icon = "⏳" if p["esito"] is None else ("✅" if p["esito"] else "❌")
         msg += (
             f"{esito_icon} *#{p['id']}* — {p['casa']} vs {p['trasferta']}\n"
             f"   🎯 {p['strategia']} | 💰 {p['quota']} | 🕐 {p['aggiunta_alle']}\n\n"
         )
-        quota_totale *= p["quota"]
 
     msg += "─" * 30 + "\n"
     msg += f"📊 Partite totali: *{len(partite_db)}*\n"
     if len(partite_db) >= 2:
-        msg += f"🎰 Quota doppia (prime 2): *{round(partite_db[0]['quota'] * partite_db[1]['quota'], 2)}*"
+        q = round(partite_db[0]['quota'] * partite_db[1]['quota'], 2)
+        msg += f"🎰 Quota doppia (prime 2): *{q}*"
 
     await update.message.reply_text(msg, parse_mode="Markdown")
 
@@ -207,7 +214,6 @@ async def doppia(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Ordina per quota decrescente (maggiore valore prima)
     partite_ordinate = sorted(partite_db, key=lambda x: x["quota"], reverse=True)
     p1 = partite_ordinate[0]
     p2 = partite_ordinate[1]
