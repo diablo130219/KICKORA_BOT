@@ -926,6 +926,74 @@ async def addai(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Errore addai: {e}")
         await update.message.reply_text(f"❌ Errore: `{e}`", parse_mode="Markdown")
 
+
+async def giornata(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/giornata — mostra tutte le partite del giorno in un colpo solo"""
+    if not auth(update): return
+
+    from datetime import datetime
+    oggi = datetime.now().strftime("%d/%m/%Y")
+    msg = f"📋 *PARTITE DEL GIORNO — {oggi}*\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━\n"
+
+    # ── STRATEGIE ──────────────────────────
+    candidate = [p for p in partite_db if p["esito"] is None]
+    if candidate:
+        strategie = {}
+        for p in candidate:
+            strategie.setdefault(p["mercato"], []).append(p)
+        msg += f"\n🎯 *STRATEGIE*\n"
+        for strat, ps in strategie.items():
+            msg += f"_({strat})_\n"
+            for p in ps:
+                ora = f"🕐 {p['data_ora'].split()[-1]} " if p.get('data_ora') else ""
+                prob_text = f" · {p['prob']}%" if p.get('prob') else ""
+                quota_text = f" · 💰 {p['quota']}" if p.get('quota') else ""
+                msg += f"  *#{p['id']}* {ora}{p['match']}{quota_text}{prob_text}\n"
+    else:
+        msg += f"\n🎯 *STRATEGIE*\n  _Nessuna partita — invia un CSV_\n"
+
+    # ── AI ─────────────────────────────────
+    msg += f"\n━━━━━━━━━━━━━━━━━━━━\n"
+    if ai_db:
+        msg += f"\n🤖 *SUGGERIMENTI AI* — {len(ai_db)} {plu(len(ai_db), 'partita', 'partite')}\n"
+        leghe = {}
+        for p in ai_db:
+            leghe.setdefault(p["lega"] or "Altro", []).append(p)
+        for lega, ps in leghe.items():
+            msg += f"\n🏆 {lega}\n"
+            for p in ps:
+                ora = f"🕐 {p['ora']} " if p.get('ora') else ""
+                msg += f"  {ora}*{p['match']}*\n"
+                for s in p.get('segnali', []):
+                    # distingui verdi da gialli
+                    if str(s).startswith('🟡'):
+                        msg += f"    🟡 {s[1:]}\n"
+                    else:
+                        msg += f"    ✅ {s}\n"
+    else:
+        msg += f"\n🤖 *SUGGERIMENTI AI*\n  _Nessuna partita — usa /addai o invia CSV_\n"
+
+    # ── LIVE ───────────────────────────────
+    live_db = [p for p in partite_db if p["mercato"] == "Over 0.5 Live" and p["esito"] is None]
+    msg += f"\n━━━━━━━━━━━━━━━━━━━━\n"
+    if live_db:
+        msg += f"\n⚡ *LIVE Over 0.5* — {len(live_db)} {plu(len(live_db), 'partita', 'partite')}\n"
+        for p in live_db:
+            ora = f"🕐 {p['data_ora'].split()[-1]} " if p.get('data_ora') else ""
+            prob_text = f" · 📊 {p['prob']}%" if p.get('prob') else ""
+            msg += f"  {ora}*{p['match']}*{prob_text}\n"
+            msg += f"  ➡️ `/live {p['match']}`\n"
+    else:
+        msg += f"\n⚡ *LIVE Over 0.5*\n  _Nessuna partita — invia CSV live_\n"
+
+    # ── FOOTER ─────────────────────────────
+    msg += f"\n━━━━━━━━━━━━━━━━━━━━\n"
+    tot = len(candidate) + len(ai_db) + len(live_db)
+    msg += f"📊 Totale: *{tot}* {plu(tot, 'partita', 'partite')} oggi"
+
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
 def main():
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
@@ -944,6 +1012,7 @@ def main():
     app.add_handler(CommandHandler("resetai", reset_ai))
     app.add_handler(MessageHandler(filters.Document.FileExtension("csv"), handle_csv))
     app.add_handler(CommandHandler("addai", addai))
+    app.add_handler(CommandHandler("giornata", giornata))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     logger.info("🚀 KICKORA BOT v2 avviato!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
