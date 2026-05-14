@@ -39,6 +39,10 @@ partite_db = []
 ai_db = []
 counter = {"id": 0}
 
+def plu(n, sing, plur):
+    """Restituisce singolare o plurale in base a n"""
+    return sing if n == 1 else plur
+
 def auth(update):
     return update.effective_chat.id == AUTHORIZED_CHAT_ID
 
@@ -250,7 +254,7 @@ def genera_bollettino(partite_ai):
     if not partite_ai:
         msg += "⚠️ Nessuna partita supera i filtri oggi.\n"
         return msg
-    msg += f"🟢 *{len(partite_ai)} PARTITE SELEZIONATE*\n"
+    msg += f"🟢 *{len(partite_ai)} {plu(len(partite_ai), 'PARTITA SELEZIONATA', 'PARTITE SELEZIONATE')}*\n"
     msg += "_Filtro: Over 0.5 ≥70% · ≥3⭐_\n\n"
     leghe = {}
     for p in partite_ai:
@@ -395,7 +399,7 @@ async def ai_lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     oggi = datetime.now().strftime("%d/%m/%Y")
     msg = f"🤖 *SUGGERIMENTI AI — {oggi}*\n━━━━━━━━━━━━━━━━━━━━\n\n"
-    msg += f"🟢 *{len(ai_db)} partite* _(Over 0.5 ≥70% · ≥3⭐)_\n\n"
+    msg += f"🟢 *{len(ai_db)} {plu(len(ai_db), 'partita', 'partite')}* _(Over 0.5 ≥70% · ≥3⭐)_\n\n"
     leghe = {}
     for p in ai_db:
         leghe.setdefault(p["lega"] or "Altro", []).append(p)
@@ -621,7 +625,7 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def reset_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
     count = len(ai_db); ai_db.clear()
-    await update.message.reply_text(f"🔄 *Lista AI svuotata!* {count} partite rimosse.", parse_mode="Markdown")
+    await update.message.reply_text(f"🔄 *Lista AI svuotata!* {count} {plu(count, 'partita rimossa', 'partite rimosse')}.", parse_mode="Markdown")
 
 
 async def live(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -741,7 +745,7 @@ def genera_bollettino_vision(dati: dict) -> str:
     # Sezione VERDI
     verdi = [p for p in con_segnali if p.get("verdi")]
     if verdi:
-        msg += f"🟢 *SEGNALI VERDI — {len(verdi)} partite*\n\n"
+        msg += f"🟢 *SEGNALI VERDI — {len(verdi)} {plu(len(verdi), 'partita', 'partite')}*\n\n"
         for p in verdi:
             stelle = "⭐" * p.get("stelle", 0)
             ora = f"🕐 {p['ora']} " if p.get("ora") else ""
@@ -757,7 +761,7 @@ def genera_bollettino_vision(dati: dict) -> str:
     # Sezione GIALLI (senza verdi)
     solo_gialli = [p for p in con_segnali if not p.get("verdi") and p.get("gialli")]
     if solo_gialli:
-        msg += f"🟡 *SEGNALI GIALLI — {len(solo_gialli)} partite*\n\n"
+        msg += f"🟡 *SEGNALI GIALLI — {len(solo_gialli)} {plu(len(solo_gialli), 'partita', 'partite')}*\n\n"
         for p in solo_gialli:
             stelle = "⭐" * p.get("stelle", 0)
             ora = f"🕐 {p['ora']} " if p.get("ora") else ""
@@ -904,7 +908,7 @@ async def addai(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for s in segnali:
             msg += f"  ✅ {s}\n"
         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n"
-        msg += f"📋 Totale AI: *{len(ai_db)}* partite\n"
+        msg += f"📋 Totale AI: *{len(ai_db)}* {plu(len(ai_db), 'partita', 'partite')}\n"
         msg += f"📢 Usa /bollettino per generare il messaggio canale"
 
         await update.message.reply_text(msg, parse_mode="Markdown")
