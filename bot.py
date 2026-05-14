@@ -50,7 +50,9 @@ def parse_num(val):
 def detect_strategy(filename, headers):
     """Rileva la strategia dal nome file o dalle colonne"""
     fname = filename.lower()
-    if "gg" in fname:
+    if "live" in fname or "o05" in fname or "over05" in fname:
+        return "Over 0.5 Live"
+    elif "gg" in fname:
         return "GG"
     elif "overino" in fname or "over15" in fname or "1.5" in fname:
         return "Over 1.5"
@@ -58,7 +60,9 @@ def detect_strategy(filename, headers):
         return "Over 2.5"
     # Prova dalle colonne
     headers_str = " ".join(headers).lower()
-    if "gg casa" in headers_str or "quota gg" in headers_str:
+    if "o05 casa" in headers_str or "o05 trasf" in headers_str:
+        return "Over 0.5 Live"
+    elif "gg casa" in headers_str or "quota gg" in headers_str:
         return "GG"
     elif "over 1.5" in headers_str or "1.5" in headers_str:
         return "Over 1.5"
@@ -95,7 +99,14 @@ def parse_csv(content, filename):
                 media_gol_trasf = parse_num(row.get("{MEDIA GOL TRASF}", "0"))
                 elo_gap = parse_num(row.get("{ELO GAP}", "0"))
 
-                if strategia == "GG":
+                if strategia == "Over 0.5 Live":
+                    quota = None  # nessuna quota pre-partita
+                    o05_casa = parse_num(row.get("{O05 CASA}", "0"))
+                    o05_trasf = parse_num(row.get("{O05 TRASF}", "0"))
+                    prob = round((o05_casa + o05_trasf) / 2, 1) if o05_casa and o05_trasf else None
+                    extra = f"O0.5 Casa: {o05_casa}% | O0.5 Trasf: {o05_trasf}% | Media Gol: {media_gol}"
+
+                elif strategia == "GG":
                     quota = parse_num(row.get("{QUOTA GG}", "0"))
                     gg_casa = parse_num(row.get("{GG CASA}", "0"))
                     gg_trasf = parse_num(row.get("{GG TRASFERTA}", "0"))
@@ -118,7 +129,7 @@ def parse_csv(content, filename):
                 else:
                     continue
 
-                if not quota or quota <= 1:
+                if strategia != "Over 0.5 Live" and (not quota or quota <= 1):
                     continue
 
                 partite.append({
@@ -232,20 +243,31 @@ async def handle_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        msg = f"✅ *{len(aggiunte)} partite aggiunte — {strategia}*\n"
+        is_live = strategia == "Over 0.5 Live"
+        icon = "⚡" if is_live else "✅"
+        msg = f"{icon} *{len(aggiunte)} partite aggiunte — {strategia}*\n"
         msg += "━━━━━━━━━━━━━━━━━━━━\n\n"
 
         for p in aggiunte:
             prob_text = f" | 📊 {p['prob']}%" if p['prob'] else ""
-            media_text = f"\n   📈 Media gol: {p['media_gol']} | Trasf: {p['media_gol_trasf']}" if p.get('media_gol') else ""
-            msg += f"*#{p['id']}* {p['match']}\n"
-            msg += f"   💰 {p['quota']}{prob_text}"
-            msg += f"{media_text}\n"
-            msg += f"   📅 {p['data_ora']}\n\n"
+            if is_live:
+                msg += f"⚡ *#{p['id']}* {p['match']}\n"
+                msg += f"   📊 O0.5 prob: *{p['prob']}%* | 📈 Media gol: {p['media_gol']}\n"
+                msg += f"   📅 {p['data_ora']}\n"
+                msg += f"   ➡️ `/live {p['match']}`\n\n"
+            else:
+                media_text = f"\n   📈 Media gol: {p['media_gol']}" if p.get('media_gol') else ""
+                msg += f"*#{p['id']}* {p['match']}\n"
+                msg += f"   💰 {p['quota']}{prob_text}"
+                msg += f"{media_text}\n"
+                msg += f"   📅 {p['data_ora']}\n\n"
 
         msg += f"━━━━━━━━━━━━━━━━━━━━\n"
         msg += f"📋 Totale candidate: *{len(partite_db)}*\n\n"
-        msg += f"➡️ Usa /combina per vedere le combinazioni!"
+        if is_live:
+            msg += f"➡️ Usa /live per ogni partita da seguire!"
+        else:
+            msg += f"➡️ Usa /combina per vedere le combinazioni!"
 
         await update.message.reply_text(msg, parse_mode="Markdown")
 
