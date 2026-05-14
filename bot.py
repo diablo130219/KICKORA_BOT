@@ -38,6 +38,142 @@ def run_health():
 
 threading.Thread(target=run_health, daemon=True).start()
 
+# ── DATABASE POSTGRESQL ───────────────────────────────────
+
+def get_conn():
+    return psycopg2.connect(DATABASE_URL, sslmode="require")
+
+def init_db():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS partite (
+                    id SERIAL PRIMARY KEY,
+                    match TEXT NOT NULL,
+                    campionato TEXT,
+                    data_ora TEXT,
+                    mercato TEXT,
+                    quota REAL,
+                    prob REAL,
+                    media_gol REAL,
+                    elo_gap REAL,
+                    extra TEXT,
+                    esito TEXT,
+                    puntata REAL DEFAULT 0,
+                    profitto REAL DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    giorno DATE DEFAULT CURRENT_DATE
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ai_partite (
+                    id SERIAL PRIMARY KEY,
+                    match TEXT NOT NULL,
+                    lega TEXT,
+                    ora TEXT,
+                    data TEXT,
+                    partite_raw TEXT,
+                    stelle INTEGER,
+                    segnali TEXT,
+                    giorno DATE DEFAULT CURRENT_DATE
+                )
+            """)
+        conn.commit()
+    logger.info("Database inizializzato")
+
+def db_get_partite():
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM partite WHERE giorno = CURRENT_DATE ORDER BY id")
+            return [dict(r) for r in cur.fetchall()]
+
+def db_add_partita(p):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO partite (match, campionato, data_ora, mercato, quota, prob,
+                    media_gol, elo_gap, extra, esito, puntata, profitto)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                RETURNING id
+            """, (
+                p["match"], p.get("campionato",""), p.get("data_ora",""),
+                p["mercato"], p.get("quota"), p.get("prob"),
+                p.get("media_gol"), p.get("elo_gap"), p.get("extra",""),
+                None, 0, 0
+            ))
+            new_id = cur.fetchone()[0]
+        conn.commit()
+    return new_id
+
+def db_update_esito(id, esito, puntata, profitto):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE partite SET esito=%s, puntata=%s, profitto=%s WHERE id=%s",
+                (esito, puntata, profitto, id)
+            )
+        conn.commit()
+
+def db_delete_partita(id):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM partite WHERE id=%s", (id,))
+        conn.commit()
+
+def db_reset_partite():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM partite WHERE giorno = CURRENT_DATE")
+        conn.commit()
+
+def db_get_ai():
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM ai_partite WHERE giorno = CURRENT_DATE ORDER BY id")
+            rows = [dict(r) for r in cur.fetchall()]
+            for r in rows:
+                r["segnali"] = json.loads(r["segnali"]) if r["segnali"] else []
+            return rows
+
+def db_add_ai(p):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO ai_partite (match, lega, ora, data, partite_raw, stelle, segnali)
+                VALUES (%s,%s,%s,%s,%s,%s,%s)
+            """, (
+                p["match"], p.get("lega",""), p.get("ora",""),
+                p.get("data",""), p.get("partite_raw",""),
+                p.get("stelle", 0), json.dumps(p.get("segnali", []))
+            ))
+        conn.commit()
+
+def db_reset_ai():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM ai_partite WHERE giorno = CURRENT_DATE")
+        conn.commit()
+
+def db_exists_ai(match):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM ai_partite WHERE match=%s AND giorno=CURRENT_DATE",
+                (match,)
+            )
+            return cur.fetchone() is not None
+
+def db_exists_partita(match, mercato):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM partite WHERE match=%s AND mercato=%s AND giorno=CURRENT_DATE",
+                (match, mercato)
+            )
+            return cur.fetchone() is not None
+
+# ──────────────────────────────────────────────────────────
+
 def plu(n, sing, plur):
     """Restituisce singolare o plurale in base a n"""
     return sing if n == 1 else plur
