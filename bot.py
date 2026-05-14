@@ -552,56 +552,34 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def live(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
     try:
-        # Formato: /live Casa vs Trasferta - capitale XX
-        testo = " ".join(context.args)
-        parti = [p.strip() for p in testo.split("-")]
-
-        if len(parti) < 2:
+        match = " ".join(context.args).strip()
+        if not match:
             raise ValueError()
 
-        match = parti[0].strip()
-        capitale = float(parti[1].strip().lower().replace("capitale","").strip())
-
-        # Calcolo 3 step
-        step1 = round(capitale * 0.40, 2)
-        step2 = round(capitale * 0.35, 2)
-        step3 = round(capitale - step1 - step2, 2)
-
-        # Quota media ponderata
-        quota_media = round((step1*1.70 + step2*1.90 + step3*2.15) / capitale, 2)
-
-        # Profitto potenziale per step
-        prof1 = round(step1 * (1.70 - 1), 2)
-        prof2 = round(step2 * (1.90 - 1), 2)
-        prof3 = round(step3 * (2.15 - 1), 2)
-        prof_tot = round(prof1 + prof2 + prof3, 2)
-
         msg = (
-            f"⚡ *LIVE — Over 0.5*\n"
+            f"⚡ *LIVE — Over 0.5 Finale*\n"
             f"━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"⚽ *{match}*\n"
-            f"💰 Capitale: *€{capitale}*\n\n"
+            f"⚽ *{match}*\n\n"
+            f"💰 *Dividi il capitale in 4 parti uguali (25% ciascuna)*\n\n"
+            f"1️⃣ *Step 1* — Entra quando quota ≥ 1.70\n"
+            f"2️⃣ *Step 2* — Entra quando quota sale ulteriormente\n"
+            f"3️⃣ *Step 3* — Entra quando quota sale ancora\n"
+            f"4️⃣ *Step 4* — Ultimo ingresso se ancora 0-0\n\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"1️⃣ Step 1 @ *1.70* → *€{step1}* (40%)\n"
-            f"   💵 Profitto potenziale: +€{prof1}\n\n"
-            f"2️⃣ Step 2 @ *1.90* → *€{step2}* (35%)\n"
-            f"   💵 Profitto potenziale: +€{prof2}\n\n"
-            f"3️⃣ Step 3 @ *2.15* → *€{step3}* (25%)\n"
-            f"   💵 Profitto potenziale: +€{prof3}\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"📊 Quota media: *{quota_media}*\n"
-            f"💰 Profitto totale se tutti e 3: *+€{prof_tot}*\n\n"
-            f"⏱️ *Entra dal 25' se ancora 0-0*\n"
-            f"🛑 Stop oltre il 42' o quota > 2.20"
+            f"🎯 *Quota target entrata: ≥ 1.70*\n\n"
+            f"⚠️ *Regole fondamentali:*\n"
+            f"🛑 Arriva gol → stop, non entrare agli step successivi\n"
+            f"🛑 Espulsione in campo → stop immediato\n"
+            f"🛑 Non entrare oltre il 75' — rischio troppo alto"
         )
         await update.message.reply_text(msg, parse_mode="Markdown")
 
     except:
         await update.message.reply_text(
             "❌ Formato:\n"
-            "`/live Casa vs Trasferta - capitale XX`\n\n"
+            "`/live Casa vs Trasferta`\n\n"
             "Esempio:\n"
-            "`/live Orlando vs Philadelphia - capitale 50`",
+            "`/live Orlando vs Philadelphia`",
             parse_mode="Markdown"
         )
 
