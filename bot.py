@@ -11,11 +11,15 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ContextTyp
 
 import base64
 import anthropic
+import psycopg2
+import psycopg2.extras
+import json
 
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 AUTHORIZED_CHAT_ID = 623848005
 KELLY_URL = "https://kelly-calculator-production.up.railway.app"
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,11 +37,6 @@ def run_health():
     HTTPServer(("0.0.0.0", port), HealthHandler).serve_forever()
 
 threading.Thread(target=run_health, daemon=True).start()
-
-# Database
-partite_db = []
-ai_db = []
-counter = {"id": 0}
 
 def plu(n, sing, plur):
     """Restituisce singolare o plurale in base a n"""
@@ -363,7 +362,7 @@ async def handle_strategy_csv(update, context, content, filename):
         return
     aggiunte = []
     for p in partite_parsed:
-        if not any(x["match"] == p["match"] and x["mercato"] == p["strategia"] for x in partite_db):
+        if not db_exists_partita(p["match"], p["strategia"]):
             partita = {
                 "id": get_next_id(), "match": p["match"],
                 "campionato": p["campionato"], "data_ora": p["data_ora"],
@@ -387,13 +386,14 @@ async def handle_strategy_csv(update, context, content, filename):
             msg += f"⚡ *#{p['id']}* {p['match']}\n   📊 {p['prob']}% | ➡️ `/live {p['match']}`\n\n"
         else:
             msg += f"*#{p['id']}* {p['match']}\n   💰 {p['quota']}{prob_text}\n   📅 {p['data_ora']}\n\n"
-    msg += f"━━━━━━━━━━━━━━━━━━━━\nTotale: *{len(partite_db)}* | "
+    msg += f"━━━━━━━━━━━━━━━━━━━━\nTotale: *{len(db_get_partite())}* | "
     msg += "➡️ /live" if is_live else "➡️ /combina"
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 
 async def ai_lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
+    ai_db = db_get_ai()
     if not ai_db:
         await update.message.reply_text("📋 *Nessuna partita AI.* Invia il CSV Suggerimenti AI.", parse_mode="Markdown")
         return
@@ -416,6 +416,7 @@ async def ai_lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def bollettino(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
+    ai_db = db_get_ai()
     if not ai_db:
         await update.message.reply_text("📋 *Nessuna partita AI.* Invia prima il CSV.", parse_mode="Markdown")
         return
@@ -439,10 +440,12 @@ async def aggiungi(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "esito": None, "puntata": 0, "profitto": 0,
             "data": datetime.now().strftime("%H:%M")
         }
-        partite_db.append(partita)
+        new_id = db_add_partita(partita)
+        partita["id"] = new_id
         prob_text = f"\n📊 Probabilità: *{prob}%*" if prob else ""
+        tutte = db_get_partite()
         await update.message.reply_text(
-            f"✅ *Aggiunta #{partita['id']}*\n⚽ {match}\n🎯 {mercato} | 💰 {quota}{prob_text}\n📋 Candidate: *{len(partite_db)}*",
+            f"✅ *Aggiunta #{new_id}*\n⚽ {match}\n🎯 {mercato} | 💰 {quota}{prob_text}\n📋 Candidate: *{len(tutte)}*",
             parse_mode="Markdown"
         )
     except:
@@ -451,6 +454,7 @@ async def aggiungi(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
+    partite_db = db_get_partite()
     if not partite_db:
         await update.message.reply_text("📋 *Nessuna partita.* Invia un CSV o usa /aggiungi", parse_mode="Markdown")
         return
@@ -510,6 +514,7 @@ async def combina(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def doppia(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
+    partite_db = db_get_partite()
     candidate = [p for p in partite_db if p["esito"] is None]
     if len(candidate) < 2:
         await update.message.reply_text("❌ Servono almeno *2 partite candidate*.", parse_mode="Markdown")
@@ -563,11 +568,12 @@ async def vinta(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         id = int(context.args[0])
         puntata = float(context.args[1]) if len(context.args) > 1 else 10.0
+        partite_db = db_get_partite()
         p = next((x for x in partite_db if x["id"] == id), None)
         if not p: await update.message.reply_text(f"❌ #{id} non trovata."); return
-        p["esito"] = "vinta"; p["puntata"] = puntata
-        p["profitto"] = round((p["quota"] - 1) * puntata, 2)
-        await update.message.reply_text(f"✅ *#{id} VINTA!*\n{p['match']}\n💰 *+€{p['profitto']}*", parse_mode="Markdown")
+        profitto = round((p["quota"] - 1) * puntata, 2)
+        db_update_esito(id, "vinta", puntata, profitto)
+        await update.message.reply_text(f"✅ *#{id} VINTA!*\n{p['match']}\n💰 *+€{profitto}*", parse_mode="Markdown")
     except:
         await update.message.reply_text("Formato: `/vinta ID puntata`", parse_mode="Markdown")
 
@@ -577,9 +583,10 @@ async def persa(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         id = int(context.args[0])
         puntata = float(context.args[1]) if len(context.args) > 1 else 10.0
+        partite_db = db_get_partite()
         p = next((x for x in partite_db if x["id"] == id), None)
         if not p: await update.message.reply_text(f"❌ #{id} non trovata."); return
-        p["esito"] = "persa"; p["puntata"] = puntata; p["profitto"] = -round(puntata, 2)
+        db_update_esito(id, "persa", puntata, -round(puntata, 2))
         await update.message.reply_text(f"❌ *#{id} persa.*\n{p['match']}\n💰 *-€{puntata}*", parse_mode="Markdown")
     except:
         await update.message.reply_text("Formato: `/persa ID puntata`", parse_mode="Markdown")
@@ -587,6 +594,7 @@ async def persa(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def riepilogo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
+    partite_db = db_get_partite()
     if not partite_db:
         await update.message.reply_text("📊 Nessuna partita oggi."); return
     vinte = [p for p in partite_db if p["esito"] == "vinta"]
@@ -618,13 +626,13 @@ async def cancella(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
-    count = len(partite_db); partite_db.clear(); counter["id"] = 0
-    await update.message.reply_text(f"🔄 *Lista svuotata!* {count} partite rimosse.", parse_mode="Markdown")
+    count = len(db_get_partite()); db_reset_partite()
+    await update.message.reply_text(f"🔄 *Lista svuotata!* {count} {plu(count, 'partita rimossa', 'partite rimosse')}.", parse_mode="Markdown")
 
 
 async def reset_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
-    count = len(ai_db); ai_db.clear()
+    count = len(db_get_ai()); db_reset_ai()
     await update.message.reply_text(f"🔄 *Lista AI svuotata!* {count} {plu(count, 'partita rimossa', 'partite rimosse')}.", parse_mode="Markdown")
 
 
@@ -816,8 +824,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for p in partite:
             if not p.get("verdi") and not p.get("gialli"):
                 continue
-            if not any(x["match"] == p["match"] for x in ai_db):
-                ai_db.append({
+            if not db_exists_ai(p["match"]):
+                db_add_ai({
                     "match": p["match"],
                     "lega": p.get("lega", ""),
                     "ora": p.get("ora", ""),
@@ -882,20 +890,19 @@ async def addai(update: Update, context: ContextTypes.DEFAULT_TYPE):
         segnali = [s.strip() for s in segnali_raw.split(",") if s.strip()]
 
         # Controlla duplicati
-        if any(x["match"] == match for x in ai_db):
+        if db_exists_ai(match):
             await update.message.reply_text(
                 f"⚠️ *{match}* è già nella lista AI.",
                 parse_mode="Markdown"
             )
             return
 
-        ai_db.append({
+        db_add_ai({
             "match": match,
             "lega": lega,
             "ora": ora,
             "data": "",
             "partite_raw": "",
-            "1x2": "",
             "stelle": stelle,
             "segnali": segnali,
         })
@@ -908,7 +915,7 @@ async def addai(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for s in segnali:
             msg += f"  ✅ {s}\n"
         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n"
-        msg += f"📋 Totale AI: *{len(ai_db)}* {plu(len(ai_db), 'partita', 'partite')}\n"
+        msg += f"📋 Totale AI: *{len(db_get_ai())}* {plu(len(db_get_ai()), 'partita', 'partite')}\n"
         msg += f"📢 Usa /bollettino per generare il messaggio canale"
 
         await update.message.reply_text(msg, parse_mode="Markdown")
@@ -1014,6 +1021,7 @@ def main():
     app.add_handler(CommandHandler("addai", addai))
     app.add_handler(CommandHandler("giornata", giornata))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    init_db()
     logger.info("🚀 KICKORA BOT v2 avviato!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
