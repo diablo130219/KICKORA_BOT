@@ -348,7 +348,7 @@ async def handle_ai_csv(update, context, content):
             msg += f"     {s}\n"
     msg += f"\n━━━━━━━━━━━━━━━━━━━━\n"
     msg += f"📢 Usa /bollettino per generare il messaggio canale\n"
-    msg += f"📋 Usa /ai per vedere il dettaglio"
+    msg += f"📋 Usa /ai per vedere il dettaglio\n➕ Usa /addai per aggiungere manualmente"
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 
@@ -854,6 +854,74 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+
+async def addai(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Formato:
+    /addai Real Madrid vs Oviedo - Primera Division - 21:30 - 1X2 1 (94%), Over 1.5 O (88%) - 4
+    """
+    if not auth(update): return
+    try:
+        testo = " ".join(context.args).strip()
+        parti = [p.strip() for p in testo.split("-")]
+
+        if len(parti) < 4:
+            raise ValueError("Formato non valido")
+
+        match        = parti[0].strip()
+        lega         = parti[1].strip()
+        ora          = parti[2].strip()
+        segnali_raw  = parti[3].strip()
+        stelle       = int(parti[4].strip()) if len(parti) >= 5 else 3
+
+        # Parsing segnali separati da virgola
+        segnali = [s.strip() for s in segnali_raw.split(",") if s.strip()]
+
+        # Controlla duplicati
+        if any(x["match"] == match for x in ai_db):
+            await update.message.reply_text(
+                f"⚠️ *{match}* è già nella lista AI.",
+                parse_mode="Markdown"
+            )
+            return
+
+        ai_db.append({
+            "match": match,
+            "lega": lega,
+            "ora": ora,
+            "data": "",
+            "partite_raw": "",
+            "1x2": "",
+            "stelle": stelle,
+            "segnali": segnali,
+        })
+
+        stelle_str = "⭐" * stelle
+        msg = f"✅ *Aggiunta alla lista AI!*\n"
+        msg += f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        msg += f"🕐 {ora} *{match}*\n"
+        msg += f"🏆 {lega} · {stelle_str}\n\n"
+        for s in segnali:
+            msg += f"  ✅ {s}\n"
+        msg += f"\n━━━━━━━━━━━━━━━━━━━━\n"
+        msg += f"📋 Totale AI: *{len(ai_db)}* partite\n"
+        msg += f"📢 Usa /bollettino per generare il messaggio canale"
+
+        await update.message.reply_text(msg, parse_mode="Markdown")
+
+    except ValueError:
+        await update.message.reply_text(
+            "❌ *Formato errato!*\n\n"
+            "Usa:\n"
+            "`/addai Casa vs Trasferta - Lega - Ora - Segnale1, Segnale2 - Stelle`\n\n"
+            "Esempio:\n"
+            "`/addai Real Madrid vs Oviedo - Primera Division - 21:30 - 1X2 1 (94%), Over 1.5 O (88%) - 4`",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logger.error(f"Errore addai: {e}")
+        await update.message.reply_text(f"❌ Errore: `{e}`", parse_mode="Markdown")
+
 def main():
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
@@ -871,6 +939,7 @@ def main():
     app.add_handler(CommandHandler("reset", reset))
     app.add_handler(CommandHandler("resetai", reset_ai))
     app.add_handler(MessageHandler(filters.Document.FileExtension("csv"), handle_csv))
+    app.add_handler(CommandHandler("addai", addai))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     logger.info("🚀 KICKORA BOT v2 avviato!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
