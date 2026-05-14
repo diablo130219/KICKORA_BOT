@@ -91,23 +91,30 @@ def parse_csv(content, filename):
                 campionato = row.get("Campionato", "").strip()
 
                 # Quota e probabilità in base alla strategia
+                media_gol = parse_num(row.get("{MEDIA GOL}", "0"))
+                media_gol_trasf = parse_num(row.get("{MEDIA GOL TRASF}", "0"))
+                elo_gap = parse_num(row.get("{ELO GAP}", "0"))
+
                 if strategia == "GG":
                     quota = parse_num(row.get("{QUOTA GG}", "0"))
                     gg_casa = parse_num(row.get("{GG CASA}", "0"))
                     gg_trasf = parse_num(row.get("{GG TRASFERTA}", "0"))
                     prob = round((gg_casa + gg_trasf) / 2, 1) if gg_casa and gg_trasf else None
+                    extra = f"GG Casa: {gg_casa}% | GG Trasf: {gg_trasf}%"
 
                 elif strategia == "Over 2.5":
                     quota = parse_num(row.get("{QUOTA 02.5}", "0"))
                     o25_casa = parse_num(row.get("{Over25Casa10}", "0"))
                     o25_trasf = parse_num(row.get("{Over25Trasf10}", "0"))
                     prob = round((o25_casa + o25_trasf) / 2, 1) if o25_casa and o25_trasf else None
+                    extra = f"O2.5 Casa: {o25_casa}% | O2.5 Trasf: {o25_trasf}%"
 
                 elif strategia == "Over 1.5":
                     quota = parse_num(row.get("{QUOTE}", "0"))
                     o15_casa = parse_num(row.get("{over 1.5 casa}", "0"))
                     o15_trasf = parse_num(row.get("{Over 1.5 Trasfe}", "0"))
                     prob = round((o15_casa + o15_trasf) / 2, 1) if o15_casa and o15_trasf else None
+                    extra = f"O1.5 Casa: {o15_casa}% | O1.5 Trasf: {o15_trasf}%"
                 else:
                     continue
 
@@ -120,7 +127,11 @@ def parse_csv(content, filename):
                     "data_ora": data_ora,
                     "strategia": strategia,
                     "quota": quota,
-                    "prob": prob
+                    "prob": prob,
+                    "media_gol": media_gol,
+                    "media_gol_trasf": media_gol_trasf,
+                    "elo_gap": elo_gap,
+                    "extra": extra
                 })
 
             except Exception as e:
@@ -200,6 +211,10 @@ async def handle_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "mercato": p["strategia"],
                     "quota": p["quota"],
                     "prob": p["prob"],
+                    "media_gol": p.get("media_gol"),
+                    "media_gol_trasf": p.get("media_gol_trasf"),
+                    "elo_gap": p.get("elo_gap"),
+                    "extra": p.get("extra", ""),
                     "esito": None,
                     "puntata": 0,
                     "profitto": 0,
@@ -220,8 +235,10 @@ async def handle_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         for p in aggiunte:
             prob_text = f" | 📊 {p['prob']}%" if p['prob'] else ""
+            media_text = f"\n   📈 Media gol: {p['media_gol']} | Trasf: {p['media_gol_trasf']}" if p.get('media_gol') else ""
             msg += f"*#{p['id']}* {p['match']}\n"
-            msg += f"   💰 {p['quota']}{prob_text}\n"
+            msg += f"   💰 {p['quota']}{prob_text}"
+            msg += f"{media_text}\n"
             msg += f"   📅 {p['data_ora']}\n\n"
 
         msg += f"━━━━━━━━━━━━━━━━━━━━\n"
