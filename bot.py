@@ -361,11 +361,27 @@ def parse_ai_csv(content, soglia=70, soglia_stelle=3):
 
 # ── PARSER CSV PROSSIMAMENTE ───────────────────────────────
 
+def fix_cgmbet_csv(content):
+    lines = content.strip().split('\n')
+    if not lines:
+        return content
+    fixed = [lines[0].strip()]
+    for line in lines[1:]:
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith('"') and line.endswith('"'):
+            line = line[1:-1]
+        line = line.replace('""', '"')
+        fixed.append(line)
+    return '\n'.join(fixed)
+
 def parse_csv(content, filename):
     partite = []
     try:
         if content.startswith('\ufeff'):
             content = content[1:]
+        content = fix_cgmbet_csv(content)
         reader = csv.DictReader(io.StringIO(content))
         headers = reader.fieldnames or []
         strategia = detect_strategy(filename, headers)
