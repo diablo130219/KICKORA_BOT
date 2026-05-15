@@ -530,8 +530,8 @@ async def handle_ai_csv(update, context, content):
         return
     aggiunte = []
     for p in partite_trovate:
-        if not any(x["match"] == p["match"] for x in ai_db):
-            ai_db.append(p)
+        if not db_exists_ai(p["match"]):
+            db_add_ai(p)
             aggiunte.append(p)
     msg = f"✅ *CSV Suggerimenti AI elaborato!*\n"
     msg += f"━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -564,7 +564,8 @@ async def handle_strategy_csv(update, context, content, filename):
                 "esito": None, "puntata": 0, "profitto": 0,
                 "data": datetime.now().strftime("%H:%M")
             }
-            partite_db.append(partita)
+            new_id = db_add_partita(partita)
+            partita["id"] = new_id
             aggiunte.append(partita)
     if not aggiunte:
         await update.message.reply_text("⚠️ Tutte le partite erano già nella lista.", parse_mode="Markdown")
@@ -598,6 +599,7 @@ async def ai_lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = f"🤖 *SUGGERIMENTI AI — {oggi}*\n━━━━━━━━━━━━━━━━━━━━\n\n"
     msg += f"🟢 *{len(ai_db)} {plu(len(ai_db), 'partita', 'partite')}* _Segnali 🟢 verdi e 🟡 gialli CGMBet AI_\n\n"
     leghe = {}
+    ai_db = db_get_ai()
     for p in ai_db:
         leghe.setdefault(p["lega"] or "Altro", []).append(p)
     for lega, ps in leghe.items():
@@ -615,6 +617,7 @@ async def ai_lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def bollettino(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
+    ai_db = db_get_ai()
     ai_db = db_get_ai()
     if not ai_db:
         await update.message.reply_text("📋 *Nessuna partita AI.* Invia prima il CSV.", parse_mode="Markdown")
@@ -653,6 +656,7 @@ async def aggiungi(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
+    partite_db = db_get_partite()
     partite_db = db_get_partite()
     if not partite_db:
         await update.message.reply_text("📋 *Nessuna partita.* Invia un CSV o usa /aggiungi", parse_mode="Markdown")
@@ -715,6 +719,7 @@ async def combina(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def doppia(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
     partite_db = db_get_partite()
+    partite_db = db_get_partite()
     candidate = [p for p in partite_db if p["esito"] is None]
     if len(candidate) < 2:
         await update.message.reply_text("❌ Servono almeno *2 partite candidate*.", parse_mode="Markdown")
@@ -771,7 +776,7 @@ async def vinta(update: Update, context: ContextTypes.DEFAULT_TYPE):
         partite_db = db_get_partite()
         p = next((x for x in partite_db if x["id"] == id), None)
         if not p: await update.message.reply_text(f"❌ #{id} non trovata."); return
-        profitto = round((p["quota"] - 1) * puntata, 2)
+        profitto = round(((p["quota"] or 2) - 1) * puntata, 2)
         db_update_esito(id, "vinta", puntata, profitto)
         await update.message.reply_text(f"✅ *#{id} VINTA!*\n{p['match']}\n💰 *+€{profitto}*", parse_mode="Markdown")
     except:
@@ -784,6 +789,7 @@ async def persa(update: Update, context: ContextTypes.DEFAULT_TYPE):
         id = int(context.args[0])
         puntata = float(context.args[1]) if len(context.args) > 1 else 10.0
         partite_db = db_get_partite()
+        partite_db = db_get_partite()
         p = next((x for x in partite_db if x["id"] == id), None)
         if not p: await update.message.reply_text(f"❌ #{id} non trovata."); return
         db_update_esito(id, "persa", puntata, -round(puntata, 2))
@@ -795,12 +801,13 @@ async def persa(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def riepilogo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
     partite_db = db_get_partite()
+    partite_db = db_get_partite()
     if not partite_db:
         await update.message.reply_text("📊 Nessuna partita oggi."); return
     vinte = [p for p in partite_db if p["esito"] == "vinta"]
     perse = [p for p in partite_db if p["esito"] == "persa"]
     attesa = [p for p in partite_db if p["esito"] is None]
-    profitto = sum(p["profitto"] for p in partite_db)
+    profitto = sum((p["profitto"] or 0) for p in partite_db)
     giocate = len(vinte) + len(perse)
     hr = round(len(vinte)/giocate*100) if giocate else 0
     await update.message.reply_text(
@@ -826,13 +833,15 @@ async def cancella(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
-    count = len(db_get_partite()); db_reset_partite()
+    count = len(db_get_partite())
+    db_reset_partite()
     await update.message.reply_text(f"🔄 *Lista svuotata!* {count} {plu(count, 'partita rimossa', 'partite rimosse')}.", parse_mode="Markdown")
 
 
 async def reset_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
-    count = len(db_get_ai()); db_reset_ai()
+    count = len(db_get_ai())
+    db_reset_ai()
     await update.message.reply_text(f"🔄 *Lista AI svuotata!* {count} {plu(count, 'partita rimossa', 'partite rimosse')}.", parse_mode="Markdown")
 
 
@@ -1024,7 +1033,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for p in partite:
             if not p.get("verdi") and not p.get("gialli"):
                 continue
-            if not db_exists_ai(p["match"]):
+            if not db_exists_ai(p.get("match","")):
                 db_add_ai({
                     "match": p["match"],
                     "lega": p.get("lega", ""),
@@ -1182,7 +1191,7 @@ async def giornata(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += f"\n🤖 *SUGGERIMENTI AI*\n  _Nessuna partita — usa /addai o invia CSV_\n"
 
     # ── LIVE ───────────────────────────────
-    live_db = [p for p in partite_db if p["mercato"] == "Over 0.5 Live" and p["esito"] is None]
+    live_db = [p for p in partite_db if p.get("mercato") == "Over 0.5 Live" and p["esito"] is None]
     msg += f"\n━━━━━━━━━━━━━━━━━━━━\n"
     if live_db:
         msg += f"\n⚡ *LIVE Over 0.5* — {len(live_db)} {plu(len(live_db), 'partita', 'partite')}\n"
