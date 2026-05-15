@@ -178,6 +178,45 @@ def plu(n, sing, plur):
     """Restituisce singolare o plurale in base a n"""
     return sing if n == 1 else plur
 
+# ── TRAFFIC LIGHT ─────────────────────────────────────────
+
+def traffic_ai(stelle, pct_segnale=None):
+    """Semaforo per partite AI"""
+    if stelle >= 4:
+        return "✅"
+    elif stelle == 3:
+        return "⚠️"
+    else:
+        return "❌"
+
+def traffic_strategia(prob, elo_gap=None):
+    """Semaforo per strategie GG/Over"""
+    if prob is None:
+        return "⚠️"
+    if prob >= 75:
+        if elo_gap is not None and abs(elo_gap) <= 50:
+            return "✅"
+        return "✅" if elo_gap is None else "⚠️"
+    elif prob >= 60:
+        return "⚠️"
+    else:
+        return "❌"
+
+def traffic_live(o05_casa, o05_trasf):
+    """Semaforo per live Over 0.5"""
+    if o05_casa is None or o05_trasf is None:
+        return "⚠️"
+    if o05_casa >= 85 and o05_trasf >= 80:
+        return "✅"
+    elif o05_casa >= 75 and o05_trasf >= 70:
+        return "⚠️"
+    else:
+        return "❌"
+
+def traffic_label(icon):
+    labels = {"✅": "Verde", "⚠️": "Giallo", "❌": "Rosso"}
+    return labels.get(icon, "")
+
 def auth(update):
     return update.effective_chat.id == AUTHORIZED_CHAT_ID
 
@@ -402,7 +441,7 @@ def genera_bollettino(partite_ai):
             msg += f"\n{ora_str}*{p['match']}*\n"
             for s in p["segnali"]:
                 msg += f"  ✅ {s}\n"
-            if p['1x2']:
+            if p.get('1x2'):
                 msg += f"  📊 1X2: {p['1x2']}\n"
             msg += f"  {'⭐' * p['stelle']} · {p['partite_raw']} partite\n"
         msg += "\n"
@@ -519,9 +558,14 @@ async def handle_strategy_csv(update, context, content, filename):
     for p in aggiunte:
         prob_text = f" | 📊 {p['prob']}%" if p['prob'] else ""
         if is_live:
-            msg += f"⚡ *#{p['id']}* {p['match']}\n   📊 {p['prob']}% | ➡️ `/live {p['match']}`\n\n"
+            tl = traffic_live(
+                parse_num(str(p.get("extra","")).split("Casa:")[1].split("%")[0].strip()) if "Casa:" in str(p.get("extra","")) else None,
+                parse_num(str(p.get("extra","")).split("Trasf:")[1].split("%")[0].strip()) if "Trasf:" in str(p.get("extra","")) else None
+            )
+            msg += f"{tl} *#{p['id']}* {p['match']}\n   📊 {p['prob']}% · *{traffic_label(tl)}* | ➡️ `/live {p['match']}`\n\n"
         else:
-            msg += f"*#{p['id']}* {p['match']}\n   💰 {p['quota']}{prob_text}\n   📅 {p['data_ora']}\n\n"
+            tl = traffic_strategia(p['prob'], p.get("elo_gap"))
+            msg += f"{tl} *#{p['id']}* {p['match']}*\n   💰 {p['quota']}{prob_text} · *{traffic_label(tl)}*\n   📅 {p['data_ora']}\n\n"
     msg += f"━━━━━━━━━━━━━━━━━━━━\nTotale: *{len(db_get_partite())}* | "
     msg += "➡️ /live" if is_live else "➡️ /combina"
     await update.message.reply_text(msg, parse_mode="Markdown")
@@ -604,7 +648,8 @@ async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += f"🎯 *{strat}*\n"
         for p in ps:
             prob_text = f" | {p['prob']}%" if p['prob'] else ""
-            msg += f"  *#{p['id']}* {p['match']}\n  💰 {p['quota']}{prob_text}\n"
+            tl = traffic_strategia(p['prob'], p.get("elo_gap"))
+            msg += f"  {tl} *#{p['id']}* {p['match']}\n  💰 {p['quota']}{prob_text} · *{traffic_label(tl)}*\n"
         msg += "\n"
     if giocate:
         msg += "━━━━━━━━━━━━━━━━━━━━\n✅ *Giocate:*\n"
