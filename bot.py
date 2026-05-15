@@ -658,6 +658,7 @@ async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
     partite_db = db_get_partite()
     partite_db = db_get_partite()
+    partite_db = db_get_partite()
     if not partite_db:
         await update.message.reply_text("📋 *Nessuna partita.* Invia un CSV o usa /aggiungi", parse_mode="Markdown")
         return
@@ -686,6 +687,7 @@ async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def combina(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
+    partite_db = db_get_partite()
     candidate = [p for p in partite_db if p["esito"] is None]
     if len(candidate) < 2:
         await update.message.reply_text("❌ Servono almeno *2 partite candidate*.", parse_mode="Markdown")
@@ -774,6 +776,7 @@ async def vinta(update: Update, context: ContextTypes.DEFAULT_TYPE):
         id = int(context.args[0])
         puntata = float(context.args[1]) if len(context.args) > 1 else 10.0
         partite_db = db_get_partite()
+        partite_db = db_get_partite()
         p = next((x for x in partite_db if x["id"] == id), None)
         if not p: await update.message.reply_text(f"❌ #{id} non trovata."); return
         profitto = round(((p["quota"] or 2) - 1) * puntata, 2)
@@ -802,6 +805,7 @@ async def riepilogo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
     partite_db = db_get_partite()
     partite_db = db_get_partite()
+    partite_db = db_get_partite()
     if not partite_db:
         await update.message.reply_text("📊 Nessuna partita oggi."); return
     vinte = [p for p in partite_db if p["esito"] == "vinta"]
@@ -823,9 +827,10 @@ async def cancella(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
     try:
         id = int(context.args[0])
+        partite_db = db_get_partite()
         p = next((x for x in partite_db if x["id"] == id), None)
         if not p: await update.message.reply_text(f"❌ #{id} non trovata."); return
-        partite_db.remove(p)
+        db_delete_partita(id)
         await update.message.reply_text(f"🗑️ *#{id} rimossa*\n{p['match']}", parse_mode="Markdown")
     except:
         await update.message.reply_text("Formato: `/cancella ID`", parse_mode="Markdown")
@@ -1191,6 +1196,7 @@ async def giornata(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += f"\n🤖 *SUGGERIMENTI AI*\n  _Nessuna partita — usa /addai o invia CSV_\n"
 
     # ── LIVE ───────────────────────────────
+    partite_db = db_get_partite()
     live_db = [p for p in partite_db if p.get("mercato") == "Over 0.5 Live" and p["esito"] is None]
     msg += f"\n━━━━━━━━━━━━━━━━━━━━\n"
     if live_db:
