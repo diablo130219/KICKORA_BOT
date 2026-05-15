@@ -437,13 +437,14 @@ def genera_bollettino(partite_ai):
     for lega, ps in leghe.items():
         msg += f"🏆 *{lega}*\n"
         for p in ps:
-            ora_str = f"🕐 {p['ora']} " if p['ora'] else ""
-            msg += f"\n{ora_str}*{p['match']}*\n"
+            stelle_n = p.get("stelle", 0)
+            tl = traffic_ai(stelle_n)
+            ora_str = f"🕐 {p['ora']} " if p.get('ora') else ""
+            stelle_str = "⭐" * stelle_n
+            msg += f"\n{tl} {ora_str}*{p['match']}*\n"
             for s in p["segnali"]:
                 msg += f"  ✅ {s}\n"
-            if p.get('1x2'):
-                msg += f"  📊 1X2: {p['1x2']}\n"
-            msg += f"  {'⭐' * p['stelle']} · {p['partite_raw']} partite\n"
+            msg += f"  {stelle_str} · *{traffic_label(tl)}*\n"
         msg += "\n"
     msg += "━━━━━━━━━━━━━━━━━━━━\n"
     msg += "⚠️ _Solo analisi statistica. Gioca responsabilmente._"
@@ -586,10 +587,12 @@ async def ai_lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for lega, ps in leghe.items():
         msg += f"🏆 *{lega}*\n"
         for p in ps:
-            msg += f"  {'🕐 '+p['ora'] if p['ora'] else ''} *{p['match']}*\n"
+            tl = traffic_ai(p["stelle"])
+            ora_str = f"🕐 {p['ora']} " if p.get("ora") else ""
+            msg += f"  {tl} {ora_str}*{p['match']}*\n"
             for s in p["segnali"]:
                 msg += f"  ✅ {s}\n"
-            msg += f"  {'⭐'*p['stelle']} · {p['partite_raw']} partite\n\n"
+            msg += f"  {'⭐'*p['stelle']} · *{traffic_label(tl)}*\n\n"
     msg += "━━━━━━━━━━━━━━━━━━━━\n📢 /bollettino per il messaggio canale"
     await update.message.reply_text(msg, parse_mode="Markdown")
 
