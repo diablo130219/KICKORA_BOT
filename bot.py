@@ -221,8 +221,8 @@ def auth(update):
     return update.effective_chat.id == AUTHORIZED_CHAT_ID
 
 def get_next_id():
-    counter["id"] += 1
-    return counter["id"]
+    """Non più necessario — PostgreSQL usa SERIAL autoincrement"""
+    return None
 
 def parse_num(val):
     try:
