@@ -429,7 +429,7 @@ def genera_bollettino(partite_ai):
         msg += "⚠️ Nessuna partita supera i filtri oggi.\n"
         return msg
     msg += f"🟢 *{len(partite_ai)} {plu(len(partite_ai), 'PARTITA SELEZIONATA', 'PARTITE SELEZIONATE')}*\n"
-    msg += "_Filtro: Over 0.5 ≥70% · ≥3⭐_\n\n"
+    msg += "_Segnali 🟢 verdi e 🟡 gialli CGMBet AI_\n\n"
     leghe = {}
     for p in partite_ai:
         l = p["lega"] or "Altro"
@@ -580,7 +580,7 @@ async def ai_lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     oggi = datetime.now().strftime("%d/%m/%Y")
     msg = f"🤖 *SUGGERIMENTI AI — {oggi}*\n━━━━━━━━━━━━━━━━━━━━\n\n"
-    msg += f"🟢 *{len(ai_db)} {plu(len(ai_db), 'partita', 'partite')}* _(Over 0.5 ≥70% · ≥3⭐)_\n\n"
+    msg += f"🟢 *{len(ai_db)} {plu(len(ai_db), 'partita', 'partite')}* _Segnali 🟢 verdi e 🟡 gialli CGMBet AI_\n\n"
     leghe = {}
     for p in ai_db:
         leghe.setdefault(p["lega"] or "Altro", []).append(p)
